@@ -1,0 +1,13 @@
+{
+	"autodeskProduct":	"Fusion360",
+	"type":	"addin",
+	"id":	"19ce0f28-2669-4a23-85b3-c7614008f355",
+	"author":	"CJ",
+	"description":	{
+		"":	"Autodesk Fusion Add-In with utilities for tools and tool libraries in the manufacturing workspace."
+	},
+	"version":	"",
+	"runOnStartup":	true,
+	"supportedOS":	"windows|mac",
+	"editEnabled":	true
+}
