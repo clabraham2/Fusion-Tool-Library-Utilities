@@ -64,13 +64,13 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     # print them to the console for debug
     # futil.log(f'Available libraries: {libraries}')
 
-    # Make a drop down for correlation type
-    correlation_input = inputs.addDropDownCommandInput('correlation', 'Correlation Type', adsk.core.DropDownStyles.TextListDropDownStyle)
-    correlation_input.listItems.add('Tool Number', True)
-    correlation_input.listItems.add('Comment', False)
-    correlation_input.listItems.add('Product ID', False)
-    correlation_input.listItems.add('Description', False)
-    correlation_input.listItems.add('Geometry', False)
+    # Make a drop down for match type
+    match_input = inputs.addDropDownCommandInput('match', 'Match Type', adsk.core.DropDownStyles.TextListDropDownStyle)
+    match_input.listItems.add('Tool Number', True)
+    match_input.listItems.add('Comment', False)
+    match_input.listItems.add('Product ID', False)
+    match_input.listItems.add('Description', False)
+    match_input.listItems.add('Geometry', False)
 
     # Make a drop down for sync direction
     syncDirection_input = inputs.addDropDownCommandInput('syncDirection', 'Sync Direction', adsk.core.DropDownStyles.TextListDropDownStyle)
@@ -84,8 +84,8 @@ def command_execute(args: adsk.core.CommandEventArgs):
     # General logging for debug
     cam = adsk.cam.CAM.cast(app.activeProduct)
     inputs = args.command.commandInputs
-    correlation_input: adsk.core.DropDownCommandInput = inputs.itemById('correlation')
-    correlation_type = correlation_input.selectedItem.name
+    match_input: adsk.core.DropDownCommandInput = inputs.itemById('match')
+    match_type = match_input.selectedItem.name
     syncDirection_input: adsk.core.DropDownCommandInput = inputs.itemById('syncDirection')
     syncDirection_type = syncDirection_input.selectedItem.name
     # futil.log(str(syncDirection_type))
@@ -99,16 +99,16 @@ def command_execute(args: adsk.core.CommandEventArgs):
     library_url = adsk.core.URL.create(libraries[library_index])
     library = toolLibraries.toolLibraryAtURL(library_url)
 
-    correlationParameter = ''
-    match correlation_type:
+    matchParameter = ''
+    match match_type:
         case 'Comment':
-            correlationParameter = 'tool_comment'
+            matchParameter = 'tool_comment'
         case 'Product ID':
-            correlationParameter = 'tool_productId'
+            matchParameter = 'tool_productId'
         case 'Description':
-            correlationParameter = 'tool_description'
+            matchParameter = 'tool_description'
         case 'Tool Number':
-            correlationParameter = 'tool_number'
+            matchParameter = 'tool_number'
 
     writeToTarget = True
     if syncDirection_type == 'Pull Differences' or syncDirection_type == 'Push Differences':
@@ -121,7 +121,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
         sourceLibrary = cam.documentToolLibrary
         targetLibrary = library
 
-    buttonClicked = ui.messageBox(f'Synchronization will proceed with the following settings: \nCorrelation: {correlation_type}\nLibrary: {formatted_libraries[library_index]}\nDirection: {syncDirection_type}', "Verify Synchronization Settings",1,2)
+    buttonClicked = ui.messageBox(f'Synchronization will proceed with the following settings: \nMatch: {match_type}\nLibrary: {formatted_libraries[library_index]}\nDirection: {syncDirection_type}', "Verify Synchronization Settings",1,2)
     #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
     match buttonClicked:
         case 0:
@@ -129,15 +129,15 @@ def command_execute(args: adsk.core.CommandEventArgs):
         case 1:
             return
         
-    if hasCollision(correlationParameter, sourceLibrary):
-        ui.messageBox(f'Multiple tool instances with the same {correlationParameter} found in the source library.')
+    if hasCollision(matchParameter, sourceLibrary):
+        ui.messageBox(f'Multiple tool instances with the same {matchParameter} found in the source library. See log for details.')
         return
 
     for targetTool in targetLibrary:
             #naive matching - support more options and detect multiple matches
-            correlationValue = targetTool.parameters.itemByName(correlationParameter).value.value
+            matchValue = targetTool.parameters.itemByName(matchParameter).value.value
             for sourceTool in sourceLibrary:
-                if correlationValue == sourceTool.parameters.itemByName(correlationParameter).value.value:
+                if matchValue == sourceTool.parameters.itemByName(matchParameter).value.value:
                     # Set Tool Parameters
                     for toolParameter in sourceTool.parameters:
                         try:
@@ -150,14 +150,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
                             except:
                                 pass
                             if str(targetValue) != str(sourceValue):
-                                futil.log(str(correlationValue) + ' ' + str(toolParameter.name) + ' ' + str(targetValue) + ' -> ' + str(sourceValue))
+                                futil.log(str(matchValue) + ' ' + str(toolParameter.name) + ' ' + str(targetValue) + ' -> ' + str(sourceValue))
                             
                             # Sets target tool parameter value regardless if same parameter value.
                             if writeToTarget:
                                 targetTool.parameters.itemByName(toolParameter.name).value.value = sourceTool.parameters.itemByName(toolParameter.name).value.value
                         except Exception as error:
                             futil.log(error)
-                            futil.log('FAILED TO SET ' + toolParameter.name + ' FOR ' + str(correlationValue) + ' TO ' + str(sourceTool.parameters.itemByName(toolParameter.name).value.value))
+                            futil.log('FAILED TO SET ' + toolParameter.name + ' FOR ' + str(matchValue) + ' TO ' + str(sourceTool.parameters.itemByName(toolParameter.name).value.value))
                             pass
 
                     # Set Tool Presets
@@ -167,7 +167,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                             newPreset.name = sourceToolPreset.name
                             for parameter in sourceToolPreset.parameters:
                                 newPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
-                            futil.log(sourceToolPreset.name + ' added to ' + str(correlationValue))
+                            futil.log(sourceToolPreset.name + ' added to ' + str(matchValue))
                     for sourceToolPreset in sourceTool.presets:
                         for targetToolPreset in targetTool.presets:
                             if targetToolPreset.name == sourceToolPreset.name:
@@ -176,7 +176,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                                         if writeToTarget:
                                             targetToolPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
                                     except:
-                                        futil.log('FAILED TO SET ' + parameter.name + ' FOR ' + str(correlationValue) + ' TO ' + str(sourceToolPreset.parameters.itemByName(parameter.name).value.value))
+                                        futil.log('FAILED TO SET ' + parameter.name + ' FOR ' + str(matchValue) + ' TO ' + str(sourceToolPreset.parameters.itemByName(parameter.name).value.value))
                                         pass
 
                     if syncDirection_type == 'Pull': #update tools in doc one at a time
@@ -201,8 +201,11 @@ def hasCollision(parameterName, library):
     for value in valueList:
         counter[value] = counter.get(value, 0) + 1
     for value in list(counter.values()):
-        if value > 1:
-            futil.log(str(counter))
+        if value > 1: # at least one parameter has more than one match
+            futil.log(f'The following values for {parameterName} exist in more than one tool instance. Ensure all tools have unique values then retry.')
+            for key, value in counter.items(): #iterate over all keys to log all that have more than one match
+                if value > 1:
+                    futil.log(str(key))
             return True
     return False
 
