@@ -204,7 +204,10 @@ def hasCollisions(parameterName, library):
             futil.log(f'The following values for \'{parameterName}\' exist in more than one tool instance: <<<<<<<<<<')
             for key, value in counter.items(): #iterate over all keys to log all that have more than one match
                 if value > 1:
-                    futil.log(str(key))
+                    if key:
+                        futil.log(str(key))
+                    else: # key value is None, e.g. empty tool description
+                        futil.log(str('\'None\''))
             futil.log(f'Reduce to one instance of each and retry synchronization')
             return True
     return False
