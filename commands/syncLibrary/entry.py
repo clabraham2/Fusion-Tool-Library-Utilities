@@ -46,7 +46,7 @@ def stop():
 
 def command_created(args: adsk.core.CommandCreatedEventArgs):
     # General logging for debug.
-    futil.log(f'\n>>>>>>>>>>{CMD_NAME} Command Created Event')
+    futil.log(f'>>> {CMD_NAME} Command Created Event')
     futil.add_handler(args.command.execute, command_execute, local_handlers=local_handlers)
     futil.add_handler(args.command.destroy, command_destroy, local_handlers=local_handlers)
 
@@ -75,9 +75,10 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     # Make a drop down for sync direction
     syncDirection_input = inputs.addDropDownCommandInput('syncDirection', 'Sync Direction', adsk.core.DropDownStyles.TextListDropDownStyle)
     syncDirection_input.listItems.add('Pull', True)
-    syncDirection_input.listItems.add('Pull Differences', False)
     syncDirection_input.listItems.add('Push', False)
-    syncDirection_input.listItems.add('Push Differences', False)
+    
+    # Diff Only input
+    diffOnly_input = inputs.addBoolValueInput('diffOnly_input', 'Log Differences Only ', True, '', False)
 
 
 def command_execute(args: adsk.core.CommandEventArgs):
@@ -88,7 +89,8 @@ def command_execute(args: adsk.core.CommandEventArgs):
     match_type = match_input.selectedItem.name
     syncDirection_input: adsk.core.DropDownCommandInput = inputs.itemById('syncDirection')
     syncDirection_type = syncDirection_input.selectedItem.name
-    # futil.log(str(syncDirection_type))
+    diffOnly_input: adsk.core.BoolValueInput = inputs.itemById('diffOnly_input')
+    diffOnly_mode = diffOnly_input.value
     library_input: adsk.core.DropDownCommandInput = inputs.itemById('library')
     camManager = adsk.cam.CAMManager.get()
     libraryManager = camManager.libraryManager
@@ -99,6 +101,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
     library_url = adsk.core.URL.create(libraries[library_index])
     library = toolLibraries.toolLibraryAtURL(library_url)
 
+    # set parameter name for input selection
     matchParameter = ''
     match match_type:
         case 'Comment':
@@ -110,90 +113,86 @@ def command_execute(args: adsk.core.CommandEventArgs):
         case 'Tool Number':
             matchParameter = 'tool_number'
 
+    # skip writing values if diffOnly_mode is true
     writeToTarget = True
-    if syncDirection_type == 'Pull Differences' or syncDirection_type == 'Push Differences':
+    if diffOnly_mode == True:
         writeToTarget = False
 
-    if syncDirection_type == 'Pull' or syncDirection_type == 'Pull Differences':
+    # reassign doucument tools and library tools to convenient names based on sync direction
+    if syncDirection_type == 'Pull':
         sourceLibrary = library
         targetLibrary = cam.documentToolLibrary
-    if syncDirection_type == 'Push' or syncDirection_type == 'Push Differences':
+    if syncDirection_type == 'Push':
         sourceLibrary = cam.documentToolLibrary
         targetLibrary = library
 
-    buttonClicked = ui.messageBox(f'Synchronization will proceed with the following settings: \nMatch: {match_type}\nLibrary: {formatted_libraries[library_index]}\nDirection: {syncDirection_type}', "Verify Synchronization Settings",1,2)
-    #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
+    # User verify that settings are correct
+    buttonClicked = ui.messageBox(f'Synchronization will proceed with the following settings: \n\nMatch: {match_type} \nLibrary: {formatted_libraries[library_index]} \nDirection: {syncDirection_type} \nLog Differences Only: {diffOnly_mode} \n\nDue to API limitations, tool holder geometry cannot be updated.', "Verify Synchronization Settings.",1,2) #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
     match buttonClicked:
         case 0:
+            futil.log(f'Match: {match_type}\n Library: {formatted_libraries[library_index]}\n Direction: {syncDirection_type}\n Log Differences Only: {diffOnly_mode}')
             pass
         case 1:
             return
-        
-    if hasCollision(matchParameter, sourceLibrary):
-        ui.messageBox(f'Multiple tool instances with the same {matchParameter} found in the source library. See log for details.')
+    
+    # Check if the source library has multiple instances of the match parameter. The command will not continue until the collisions are resolved.
+    if hasCollisions(matchParameter, sourceLibrary):
+        ui.messageBox(f'Multiple tool instances with the same \'{match_type}\' were found in \'{formatted_libraries[library_index]}\'. There may only be one instance of each match before synchronization will continue. See log for details.')
         return
 
     for targetTool in targetLibrary:
-            #naive matching - support more options and detect multiple matches
-            matchValue = targetTool.parameters.itemByName(matchParameter).value.value
-            for sourceTool in sourceLibrary:
-                if matchValue == sourceTool.parameters.itemByName(matchParameter).value.value:
-                    # Set Tool Parameters
-                    for toolParameter in sourceTool.parameters:
-                        try:
-                            # Float error causes high sensitivty in "differences" that are insignificant, filter by rounding and comparing string
-                            sourceValue = sourceTool.parameters.itemByName(toolParameter.name).value.value
-                            targetValue = targetTool.parameters.itemByName(toolParameter.name).value.value
-                            try:
-                                sourceValue = round(sourceValue,5)
-                                targetValue = round(targetValue,5)
-                            except:
-                                pass
-                            if str(targetValue) != str(sourceValue):
-                                futil.log(str(matchValue) + ' ' + str(toolParameter.name) + ' ' + str(targetValue) + ' -> ' + str(sourceValue))
-                            
-                            # Sets target tool parameter value regardless if same parameter value.
-                            if writeToTarget:
-                                targetTool.parameters.itemByName(toolParameter.name).value.value = sourceTool.parameters.itemByName(toolParameter.name).value.value
-                        except Exception as error:
-                            futil.log(error)
-                            futil.log('FAILED TO SET ' + toolParameter.name + ' FOR ' + str(matchValue) + ' TO ' + str(sourceTool.parameters.itemByName(toolParameter.name).value.value))
-                            pass
+        matchValue = targetTool.parameters.itemByName(matchParameter).value.value # convenient to have as a shorter variable name
 
-                    # Set Tool Presets
-                    for sourceToolPreset in sourceTool.presets:
-                        if not targetTool.presets.itemsByName(sourceToolPreset.name):
-                            newPreset = targetTool.presets.add()
-                            newPreset.name = sourceToolPreset.name
-                            for parameter in sourceToolPreset.parameters:
-                                newPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
-                            futil.log(sourceToolPreset.name + ' added to ' + str(matchValue))
-                    for sourceToolPreset in sourceTool.presets:
-                        for targetToolPreset in targetTool.presets:
-                            if targetToolPreset.name == sourceToolPreset.name:
-                                for parameter in sourceToolPreset.parameters:
-                                    try:
-                                        if writeToTarget:
-                                            targetToolPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
-                                    except:
-                                        futil.log('FAILED TO SET ' + parameter.name + ' FOR ' + str(matchValue) + ' TO ' + str(sourceToolPreset.parameters.itemByName(parameter.name).value.value))
-                                        pass
+        sourceTool = [item for item in sourceLibrary if item.parameters.itemByName(matchParameter).value.value == matchValue][0] # Find SOURCE tool by parameter name, b/c iterating over target tools. Duplicates should be caught by hasCollisions()
 
-                    if syncDirection_type == 'Pull': #update tools in doc one at a time
-                        cam.documentToolLibrary.update(targetTool, True)
+        # Step 1/3 - Parameters
+        for toolParameter in sourceTool.parameters:
+            try: 
+                writeDiffToLog(matchValue, toolParameter.name, targetTool.parameters.itemByName(toolParameter.name).value.value, sourceTool.parameters.itemByName(toolParameter.name).value.value)
+                if writeToTarget:
+                    targetTool.parameters.itemByName(toolParameter.name).value.value = sourceTool.parameters.itemByName(toolParameter.name).value.value
+            except Exception as error:
+                # futil.log(error) # debug mode?
+                futil.log('Failed to set \'' + toolParameter.name + '\' for ' + str(matchValue) + ' to ' + str(sourceTool.parameters.itemByName(toolParameter.name).value.value))
+                pass
 
-    if syncDirection_type == 'Push': #update library all at once at end
+        # Step 2/3 - Presets
+        for sourceToolPreset in sourceTool.presets:
+            if not targetTool.presets.itemsByName(sourceToolPreset.name): # Add absent preset to target tool
+                newPreset = targetTool.presets.add()
+                newPreset.name = sourceToolPreset.name
+                for parameter in sourceToolPreset.parameters:
+                    newPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
+                futil.log('Preset \'' + sourceToolPreset.name + '\' added to ' + str(matchValue))
+            else: # Overwrite existing preset
+                targetToolPreset = [item for item in targetTool.presets if item.name == sourceToolPreset.name][0] # Find TARGET tool preset by name, b/c interating over source tool presets from the tool that was found earlier. UI disallows same names, so there should not be duplciates
+                for parameter in sourceToolPreset.parameters:
+                    try:
+                        writeDiffToLog(matchValue, str(sourceToolPreset.name + '\',\'' + parameter.name), targetToolPreset.parameters.itemByName(parameter.name).value.value, sourceToolPreset.parameters.itemByName(parameter.name).value.value)
+                        if writeToTarget:
+                            targetToolPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
+                    except:
+                        # futil.log(error) # debug mode?
+                        futil.log('Failed to set ' + str(sourceToolPreset.name + ' ' + parameter.name) + ' for ' + str(matchValue) + ' to ' + str(sourceToolPreset.parameters.itemByName(parameter.name).value.value))
+                        pass
+
+        # Step 3/3 Holder - API does not currently support editing the holder geometry
+        
+        if syncDirection_type == 'Pull': #update tools in doc one at a time when pulling
+            cam.documentToolLibrary.update(targetTool, True)
+
+    if syncDirection_type == 'Push': #update library all at once at end when pushing
         toolLibraries.updateToolLibrary(library_url, library)
 
-    # ui.messageBox(' See log for list of updated tools.')
+    ui.messageBox('Synchronization completed. See log for details')
 
 # This event handler is called when the command terminates.
 def command_destroy(args: adsk.core.CommandEventArgs):
     global local_handlers
     local_handlers = []
-    futil.log(f'<<<<<<<<<<{CMD_NAME} Command Destroy Event')
+    futil.log(f'>>> {CMD_NAME} Command Destroy Event')
 
-def hasCollision(parameterName, library):
+def hasCollisions(parameterName, library):
     valueList = []
     counter = {}
     for tool in library:
@@ -202,12 +201,23 @@ def hasCollision(parameterName, library):
         counter[value] = counter.get(value, 0) + 1
     for value in list(counter.values()):
         if value > 1: # at least one parameter has more than one match
-            futil.log(f'The following values for {parameterName} exist in more than one tool instance. Ensure all tools have unique values then retry.')
+            futil.log(f'The following values for \'{parameterName}\' exist in more than one tool instance: <<<<<<<<<<')
             for key, value in counter.items(): #iterate over all keys to log all that have more than one match
                 if value > 1:
                     futil.log(str(key))
+            futil.log(f'Reduce to one instance of each and retry synchronization')
             return True
     return False
+
+def writeDiffToLog(id, parameterName, targetValue, sourceValue):
+    try: # float errors make logging diffs sensitive
+        sourceValue = round(sourceValue,4)
+        targetValue = round(targetValue,4)
+    except:
+        pass # value isn't a number
+    if str(targetValue) != str(sourceValue):
+        futil.log(str(id) + ' \'' + str(parameterName) + '\' ' + str(targetValue) + ' -> ' + str(sourceValue))
+    return
 
 def get_tooling_libraries() -> List:
     # Get the list of tooling libraries
