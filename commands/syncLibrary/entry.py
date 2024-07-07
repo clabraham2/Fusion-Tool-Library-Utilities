@@ -70,7 +70,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     match_input.listItems.add('Comment', False)
     match_input.listItems.add('Product ID', False)
     match_input.listItems.add('Description', False)
-    match_input.listItems.add('Geometry', False)
+    # match_input.listItems.add('Geometry', False)
 
     # Make a drop down for sync direction
     syncDirection_input = inputs.addDropDownCommandInput('syncDirection', 'Sync Direction', adsk.core.DropDownStyles.TextListDropDownStyle)
