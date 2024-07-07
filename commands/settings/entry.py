@@ -13,8 +13,8 @@ app = adsk.core.Application.get()
 ui = app.userInterface
 
 CMD_ID = f'{config.COMPANY_NAME}_{config.ADDIN_NAME}_Settings'
-CMD_NAME = 'Fusion Essentials Settings'
-CMD_Description = 'Change the settings and default behavior of Fusion Essentials'
+CMD_NAME = 'Fusion Tool Library Utilities Settings'
+CMD_Description = 'Change the settings and default behavior of Fusion Tool Library Utilities'
 IS_PROMOTED = True
 
 WORKSPACE_ID = 'FusionSolidEnvironment'
