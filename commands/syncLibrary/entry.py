@@ -137,7 +137,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
         try:
             sourceTool = [item for item in sourceLibrary if item.parameters.itemByName(matchParameter).value.value == matchValue][0] # Find SOURCE tool by parameter name, b/c iterating over target tools. Duplicates should be caught by hasCollisions()
         except:
-            futil.log(f'No match found for {matchValue}')
+            futil.log(f'No match found for \'{matchValue}\'')
             continue
 
         # Step 1/3 - Parameters
