@@ -154,10 +154,11 @@ def command_execute(args: adsk.core.CommandEventArgs):
         # Step 2/3 - Presets
         for sourceToolPreset in sourceTool.presets:
             if not targetTool.presets.itemsByName(sourceToolPreset.name): # Add absent preset to target tool
-                newPreset = targetTool.presets.add()
-                newPreset.name = sourceToolPreset.name
-                for parameter in sourceToolPreset.parameters:
-                    newPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
+                if not diffOnly_mode:
+                    newPreset = targetTool.presets.add()
+                    newPreset.name = sourceToolPreset.name
+                    for parameter in sourceToolPreset.parameters:
+                        newPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
                 futil.log('Preset \'' + sourceToolPreset.name + '\' added to ' + str(matchValue))
             else: # Overwrite existing preset
                 targetToolPreset = [item for item in targetTool.presets if item.name == sourceToolPreset.name][0] # Find TARGET tool preset by name, b/c interating over source tool presets from the tool that was found earlier. UI disallows same names, so there should not be duplciates
