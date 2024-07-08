@@ -100,23 +100,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
     library_index = formatted_libraries.index(library_input.selectedItem.name)
     library_url = adsk.core.URL.create(libraries[library_index])
     library = toolLibraries.toolLibraryAtURL(library_url)
-
-    # set parameter name for input selection
-    matchParameter = ''
-    match match_type:
-        case 'Comment':
-            matchParameter = 'tool_comment'
-        case 'Product ID':
-            matchParameter = 'tool_productId'
-        case 'Description':
-            matchParameter = 'tool_description'
-        case 'Tool Number':
-            matchParameter = 'tool_number'
-
-    # skip writing values if diffOnly_mode is true
-    writeToTarget = True
-    if diffOnly_mode == True:
-        writeToTarget = False
+    
+    match_type_dict = {
+        'Comment':'tool_comment',
+        'Product ID':'tool_productId',
+        'Description':'tool_description',
+        'Tool Number':'tool_number'
+    }
+    matchParameter = match_type_dict[match_type]
 
     # reassign doucument tools and library tools to convenient names based on sync direction
     if syncDirection_type == 'Pull':
@@ -153,7 +144,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
         for toolParameter in sourceTool.parameters:
             try: 
                 writeDiffToLog(matchValue, toolParameter.name, targetTool.parameters.itemByName(toolParameter.name).value.value, sourceTool.parameters.itemByName(toolParameter.name).value.value)
-                if writeToTarget:
+                if not diffOnly_mode:
                     targetTool.parameters.itemByName(toolParameter.name).value.value = sourceTool.parameters.itemByName(toolParameter.name).value.value
             except Exception as error:
                 # futil.log(error) # debug mode?
@@ -173,7 +164,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                 for parameter in sourceToolPreset.parameters:
                     try:
                         writeDiffToLog(matchValue, str(sourceToolPreset.name + '\',\'' + parameter.name), targetToolPreset.parameters.itemByName(parameter.name).value.value, sourceToolPreset.parameters.itemByName(parameter.name).value.value)
-                        if writeToTarget:
+                        if not diffOnly_mode:
                             targetToolPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
                     except:
                         # futil.log(error) # debug mode?
