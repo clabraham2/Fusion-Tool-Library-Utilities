@@ -143,7 +143,11 @@ def command_execute(args: adsk.core.CommandEventArgs):
     for targetTool in targetLibrary:
         matchValue = targetTool.parameters.itemByName(matchParameter).value.value # convenient to have as a shorter variable name
 
-        sourceTool = [item for item in sourceLibrary if item.parameters.itemByName(matchParameter).value.value == matchValue][0] # Find SOURCE tool by parameter name, b/c iterating over target tools. Duplicates should be caught by hasCollisions()
+        try:
+            sourceTool = [item for item in sourceLibrary if item.parameters.itemByName(matchParameter).value.value == matchValue][0] # Find SOURCE tool by parameter name, b/c iterating over target tools. Duplicates should be caught by hasCollisions()
+        except:
+            futil.log(f'No match found for {matchValue}')
+            continue
 
         # Step 1/3 - Parameters
         for toolParameter in sourceTool.parameters:
