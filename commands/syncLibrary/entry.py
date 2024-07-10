@@ -76,10 +76,12 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     syncDirection_input = inputs.addDropDownCommandInput('syncDirection', 'Sync Direction', adsk.core.DropDownStyles.TextListDropDownStyle)
     syncDirection_input.listItems.add('Pull', True)
     syncDirection_input.listItems.add('Push', False)
-    
+
+    # Skip Presets
+    skipPresets_input = inputs.addBoolValueInput('skipPresets_input', 'Skip Syncing Preset Values', True, '', False)
+
     # Diff Only input
     diffOnly_input = inputs.addBoolValueInput('diffOnly_input', 'Log Differences Only ', True, '', False)
-
 
 def command_execute(args: adsk.core.CommandEventArgs):
     # General logging for debug
@@ -91,6 +93,8 @@ def command_execute(args: adsk.core.CommandEventArgs):
     syncDirection_type = syncDirection_input.selectedItem.name
     diffOnly_input: adsk.core.BoolValueInput = inputs.itemById('diffOnly_input')
     diffOnly_mode = diffOnly_input.value
+    skipPresets_input: adsk.core.BoolValueInput = inputs.itemById('skipPresets_input')
+    skipPresets_mode = skipPresets_input.value
     library_input: adsk.core.DropDownCommandInput = inputs.itemById('library')
     camManager = adsk.cam.CAMManager.get()
     libraryManager = camManager.libraryManager
@@ -118,7 +122,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
         targetLibrary = library
 
     # User verify that settings are correct
-    buttonClicked = ui.messageBox(f'Synchronization will proceed with the following settings: \n\nMatch: {match_type} \nLibrary: {formatted_libraries[library_index]} \nDirection: {syncDirection_type} \nLog Differences Only: {diffOnly_mode} \n\nDue to API limitations, tool holder geometry cannot be updated.', "Verify Synchronization Settings.",1,2) #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
+    buttonClicked = ui.messageBox(f'Synchronization will proceed with the following settings: \n\nMatch: {match_type} \nLibrary: {formatted_libraries[library_index]} \nDirection: {syncDirection_type} \nSkip Preset Values: {skipPresets_mode} \nLog Differences Only: {diffOnly_mode} \n\nDue to API limitations, tool holder geometry cannot be updated.', "Verify Synchronization Settings.",1,2) #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
     match buttonClicked:
         case 0:
             futil.log(f'Match: {match_type}\n Library: {formatted_libraries[library_index]}\n Direction: {syncDirection_type}\n Log Differences Only: {diffOnly_mode}')
@@ -142,35 +146,37 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
         # Step 1/3 - Parameters
         for toolParameter in sourceTool.parameters:
-            try: 
-                writeDiffToLog(matchValue, toolParameter.name, targetTool.parameters.itemByName(toolParameter.name).value.value, sourceTool.parameters.itemByName(toolParameter.name).value.value)
-                if not diffOnly_mode:
-                    targetTool.parameters.itemByName(toolParameter.name).value.value = sourceTool.parameters.itemByName(toolParameter.name).value.value
-            except Exception as error:
-                # futil.log(error) # debug mode?
-                futil.log('Failed to set \'' + toolParameter.name + '\' for ' + str(matchValue) + ' to ' + str(sourceTool.parameters.itemByName(toolParameter.name).value.value))
-                pass
+            if True: #todo future for only syncing certain parameters
+                try: 
+                    writeDiffToLog(matchValue, toolParameter.name, targetTool.parameters.itemByName(toolParameter.name).value.value, sourceTool.parameters.itemByName(toolParameter.name).value.value)
+                    if not diffOnly_mode:
+                        targetTool.parameters.itemByName(toolParameter.name).value.value = sourceTool.parameters.itemByName(toolParameter.name).value.value
+                except Exception as error:
+                    # futil.log(error) # debug mode?
+                    futil.log('Failed to set \'' + toolParameter.name + '\' for ' + str(matchValue) + ' to ' + str(sourceTool.parameters.itemByName(toolParameter.name).value.value))
+                    pass
 
         # Step 2/3 - Presets
-        for sourceToolPreset in sourceTool.presets:
-            if not targetTool.presets.itemsByName(sourceToolPreset.name): # Add absent preset to target tool
-                if not diffOnly_mode:
-                    newPreset = targetTool.presets.add()
-                    newPreset.name = sourceToolPreset.name
+        if not skipPresets_mode: #todo checkbox to update presets
+            for sourceToolPreset in sourceTool.presets:
+                if not targetTool.presets.itemsByName(sourceToolPreset.name): # Add absent preset to target tool
+                    if not diffOnly_mode:
+                        newPreset = targetTool.presets.add()
+                        newPreset.name = sourceToolPreset.name
+                        for parameter in sourceToolPreset.parameters:
+                            newPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
+                    futil.log('Preset \'' + sourceToolPreset.name + '\' added to ' + str(matchValue))
+                else: # Overwrite existing preset
+                    targetToolPreset = [item for item in targetTool.presets if item.name == sourceToolPreset.name][0] # Find TARGET tool preset by name, b/c interating over source tool presets from the tool that was found earlier. UI disallows same names, so there should not be duplciates
                     for parameter in sourceToolPreset.parameters:
-                        newPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
-                futil.log('Preset \'' + sourceToolPreset.name + '\' added to ' + str(matchValue))
-            else: # Overwrite existing preset
-                targetToolPreset = [item for item in targetTool.presets if item.name == sourceToolPreset.name][0] # Find TARGET tool preset by name, b/c interating over source tool presets from the tool that was found earlier. UI disallows same names, so there should not be duplciates
-                for parameter in sourceToolPreset.parameters:
-                    try:
-                        writeDiffToLog(matchValue, str(sourceToolPreset.name + '\',\'' + parameter.name), targetToolPreset.parameters.itemByName(parameter.name).value.value, sourceToolPreset.parameters.itemByName(parameter.name).value.value)
-                        if not diffOnly_mode:
-                            targetToolPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
-                    except:
-                        # futil.log(error) # debug mode?
-                        futil.log('Failed to set ' + str(sourceToolPreset.name + ' ' + parameter.name) + ' for ' + str(matchValue) + ' to ' + str(sourceToolPreset.parameters.itemByName(parameter.name).value.value))
-                        pass
+                        try:
+                            writeDiffToLog(matchValue, str(sourceToolPreset.name + '\',\'' + parameter.name), targetToolPreset.parameters.itemByName(parameter.name).value.value, sourceToolPreset.parameters.itemByName(parameter.name).value.value)
+                            if not diffOnly_mode:
+                                targetToolPreset.parameters.itemByName(parameter.name).value.value = sourceToolPreset.parameters.itemByName(parameter.name).value.value
+                        except:
+                            # futil.log(error) # debug mode?
+                            futil.log('Failed to set ' + str(sourceToolPreset.name + ' ' + parameter.name) + ' for ' + str(matchValue) + ' to ' + str(sourceToolPreset.parameters.itemByName(parameter.name).value.value))
+                            pass
 
         # Step 3/3 Holder - API does not currently support editing the holder geometry
         
