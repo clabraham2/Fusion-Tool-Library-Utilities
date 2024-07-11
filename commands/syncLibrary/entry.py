@@ -70,7 +70,6 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     match_input.listItems.add('Comment', False)
     match_input.listItems.add('Product ID', False)
     match_input.listItems.add('Description', False)
-    # match_input.listItems.add('Geometry', False)
 
     # Make a drop down for sync direction
     syncDirection_input = inputs.addDropDownCommandInput('syncDirection', 'Sync Direction', adsk.core.DropDownStyles.TextListDropDownStyle)
@@ -122,15 +121,16 @@ def command_execute(args: adsk.core.CommandEventArgs):
         targetLibrary = library
 
     # User verify that settings are correct
-    buttonClicked = ui.messageBox(f'Synchronization will proceed with the following settings: \n\nMatch: {match_type} \nLibrary: {formatted_libraries[library_index]} \nDirection: {syncDirection_type} \nSkip Preset Values: {syncPresets_mode} \nLog Differences Only: {diffOnly_mode} \n\nDue to API limitations, tool holder geometry cannot be updated.', "Verify Synchronization Settings.",1,2) #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
+    buttonClicked = ui.messageBox(f'Synchronization will proceed with the following settings: \n\nMatch: {match_type} \nLibrary: {formatted_libraries[library_index]} \nDirection: {syncDirection_type} \nSync Preset Values: {syncPresets_mode} \nLog Differences Only: {diffOnly_mode} \n\nDue to API limitations, tool holder geometry cannot be updated.', "Verify Synchronization Settings.",1,2) #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
     match buttonClicked:
         case 0:
-            futil.log(f'Match: {match_type}\n Library: {formatted_libraries[library_index]}\n Direction: {syncDirection_type}\n Log Differences Only: {diffOnly_mode}')
+            futil.log(f'Match: {match_type}\n Library: {formatted_libraries[library_index]}\nDirection: {syncDirection_type} \nSync Preset Values: {syncPresets_mode} \nLog Differences Only: {diffOnly_mode}')
             pass
         case 1:
             return
     
     # Check if the source library has multiple instances of the match parameter. The command will not continue until the collisions are resolved.
+    # This is slow if the library is large
     if hasCollisions(matchParameter, sourceLibrary):
         ui.messageBox(f'Multiple tool instances with the same \'{match_type}\' were found in \'{formatted_libraries[library_index]}\'. There may only be one instance of each match before synchronization will continue. See log for details.')
         return
@@ -142,7 +142,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
             sourceTool = [item for item in sourceLibrary if item.parameters.itemByName(matchParameter).value.value == matchValue][0] # Find SOURCE tool by parameter name, b/c iterating over target tools. Duplicates should be caught by hasCollisions()
         except:
             futil.log(f'No match found for \'{matchValue}\'')
-            if syncDirection_type == 'Pull':
+            if syncDirection_type == 'Pull': # If pulling data from a library, a user may want to add a dangling tool to the source library
                 buttonClicked = ui.messageBox(f'No match found for \'{matchValue}\' in Source Library. Add it to the Source Library?', "Add Tool to Source Library?",1,2) #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
                 match buttonClicked:
                     case 0:
