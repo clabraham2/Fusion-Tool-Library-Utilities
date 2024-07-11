@@ -78,7 +78,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     syncDirection_input.listItems.add('Push', False)
 
     # Skip Presets
-    skipPresets_input = inputs.addBoolValueInput('skipPresets_input', 'Skip Syncing Preset Values', True, '', False)
+    syncPresets_input = inputs.addBoolValueInput('syncPresets_input', 'Sync Preset Values', True, '', False)
 
     # Diff Only input
     diffOnly_input = inputs.addBoolValueInput('diffOnly_input', 'Log Differences Only ', True, '', False)
@@ -93,8 +93,8 @@ def command_execute(args: adsk.core.CommandEventArgs):
     syncDirection_type = syncDirection_input.selectedItem.name
     diffOnly_input: adsk.core.BoolValueInput = inputs.itemById('diffOnly_input')
     diffOnly_mode = diffOnly_input.value
-    skipPresets_input: adsk.core.BoolValueInput = inputs.itemById('skipPresets_input')
-    skipPresets_mode = skipPresets_input.value
+    syncPresets_input: adsk.core.BoolValueInput = inputs.itemById('syncPresets_input')
+    syncPresets_mode = syncPresets_input.value
     library_input: adsk.core.DropDownCommandInput = inputs.itemById('library')
     camManager = adsk.cam.CAMManager.get()
     libraryManager = camManager.libraryManager
@@ -122,7 +122,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
         targetLibrary = library
 
     # User verify that settings are correct
-    buttonClicked = ui.messageBox(f'Synchronization will proceed with the following settings: \n\nMatch: {match_type} \nLibrary: {formatted_libraries[library_index]} \nDirection: {syncDirection_type} \nSkip Preset Values: {skipPresets_mode} \nLog Differences Only: {diffOnly_mode} \n\nDue to API limitations, tool holder geometry cannot be updated.', "Verify Synchronization Settings.",1,2) #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
+    buttonClicked = ui.messageBox(f'Synchronization will proceed with the following settings: \n\nMatch: {match_type} \nLibrary: {formatted_libraries[library_index]} \nDirection: {syncDirection_type} \nSkip Preset Values: {syncPresets_mode} \nLog Differences Only: {diffOnly_mode} \n\nDue to API limitations, tool holder geometry cannot be updated.', "Verify Synchronization Settings.",1,2) #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
     match buttonClicked:
         case 0:
             futil.log(f'Match: {match_type}\n Library: {formatted_libraries[library_index]}\n Direction: {syncDirection_type}\n Log Differences Only: {diffOnly_mode}')
@@ -142,6 +142,15 @@ def command_execute(args: adsk.core.CommandEventArgs):
             sourceTool = [item for item in sourceLibrary if item.parameters.itemByName(matchParameter).value.value == matchValue][0] # Find SOURCE tool by parameter name, b/c iterating over target tools. Duplicates should be caught by hasCollisions()
         except:
             futil.log(f'No match found for \'{matchValue}\'')
+            if syncDirection_type == 'Pull':
+                buttonClicked = ui.messageBox(f'No match found for \'{matchValue}\' in Source Library. Add it to the Source Library?', "Add Tool to Source Library?",1,2) #0 OK, -1 Error, 1 Cancel, 2 Yes or Retry, 3 No
+                match buttonClicked:
+                    case 0:
+                        library.add(targetTool)
+                        toolLibraries.updateToolLibrary(library_url, library)
+                        futil.log(f'Added \'{matchValue}\' to Source Library')
+                    case 1:
+                        pass
             continue
 
         # Step 1/3 - Parameters
@@ -157,7 +166,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
                     pass
 
         # Step 2/3 - Presets
-        if not skipPresets_mode: #todo checkbox to update presets
+        if syncPresets_mode:
             for sourceToolPreset in sourceTool.presets:
                 if not targetTool.presets.itemsByName(sourceToolPreset.name): # Add absent preset to target tool
                     if not diffOnly_mode:
